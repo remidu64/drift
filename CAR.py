@@ -170,6 +170,13 @@ class Drift(arcade.Window):
         self.ghost.center_y = -1000000
         self.scene.add_sprite("Ghost", self.ghost)
 
+        #human player
+        self.player_sprite2 = arcade.Sprite("assets/human.png", SPRITE_SCALING)
+        self.player_sprite2.angle = 0
+        self.player_sprite2.center_x = 1000000
+        self.player_sprite2.center_y = 1000000
+        self.scene.add_sprite("Human", self.player_sprite2)
+
 
         # Set the background color
         if self.tile_map.background_color:
@@ -206,12 +213,14 @@ class Drift(arcade.Window):
         else:
             gear_text = f'Vitesse: {self.gear}'
 
-        arcade.draw_text(gear_text,10, self.height - 20, GREEN, 18)
+        gear_text = arcade.Text(gear_text, 10, self.height - 20, GREEN,18)
+        gear_text.draw()
 
         #draw speed
         speed_text = f"{self.speed} km/h"
 
-        arcade.draw_text(speed_text,10,self.height - 40, GREEN, 18)
+        speed_text = arcade.Text(speed_text, 10, self.height - 40, GREEN, 18)
+        speed_text.draw()
 
         """
         #debug
@@ -271,9 +280,10 @@ class Drift(arcade.Window):
                 self.porty = self.player_sprite.center_y
                 self.player_sprite.change_y = 0
                 self.player_sprite.change_x = 0
-                self.player_sprite.center_x = 4850
-                self.player_sprite.center_y = 1550
+                self.player_sprite.forward(-10)
                 self.state = 1
+                self.player_gearing = 3.5
+                TEMP_ACCELERATION_ADD = 0.05
                 self.gear = 0
                 self.time = 0
             elif self.state == 1:
@@ -312,12 +322,12 @@ class Drift(arcade.Window):
                 self.porty = self.player_sprite.center_y
                 self.player_sprite.change_y = 0
                 self.player_sprite.change_x = 0
-                self.player_sprite.center_x = 6000
-                self.player_sprite.center_y = 875
+                self.player_sprite.forward(20)
                 self.player_sprite.angle = 90
                 self.state = 2
                 self.gear = 0
                 self.player_gearing = 1
+                TEMP_ACCELERATION_ADD = 0.05
                 self.time = 0
 
 
@@ -613,8 +623,35 @@ class Drift(arcade.Window):
                 self.player_sprite.change_y = 0
 
         elif self.state == 3:
-            pass
+            if self.up_pressed and not self.down_pressed:
+                self.player_sprite2.forward(0.05)
+            elif not self.up_pressed and self.down_pressed:
+                self.player_sprite2.forward(-0.05)
 
+            self.player_sprite2.change_x /= FRICTION + 1
+            self.player_sprite2.change_y /= FRICTION + 1
+
+            if MIN_SPEED > self.player_sprite2.change_x > 0:
+                self.player_sprite2.change_x = 0
+            if MIN_SPEED > self.player_sprite2.change_y > 0:
+                self.player_sprite2.change_y = 0
+            if -MIN_SPEED < self.player_sprite2.change_x < 0:
+                self.player_sprite2.change_x = 0
+            if -MIN_SPEED < self.player_sprite2.change_y < 0:
+                self.player_sprite2.change_y = 0
+
+            if self.left_pressed and not self.right_pressed:
+                self.player_sprite2.change_angle = 4
+            elif self.right_pressed and not self.left_pressed:
+                self.player_sprite2.change_angle = -4
+
+            if not self.left_pressed and not self.right_pressed:
+                self.player_sprite2.change_angle = 0
+
+            if ANGLE_SPEED_MIN > self.player_sprite2.change_angle > 0:
+                self.player_sprite2.change_angle = 0
+            elif -ANGLE_SPEED_MIN < self.player_sprite2.change_angle < 0:
+                self.player_sprite2.change_angle = 0
 
 
 
@@ -634,8 +671,10 @@ class Drift(arcade.Window):
         Anything between 0 and 1 will have the camera move to the location with a smoother
         pan.
         """
-
-        position = self.player_sprite.center_x - (self.width / 2), self.player_sprite.center_y - (self.height / 2)
+        if not self.state == 3:
+            position = self.player_sprite.center_x - (self.width / 2), self.player_sprite.center_y - (self.height / 2)
+        else:
+            position = self.player_sprite2.center_x - (self.width / 2), self.player_sprite2.center_y - (self.height / 2)
         self.camera.move_to(position, CAMERA_SPEED)
 
     def on_key_press(self, key, modifiers):
@@ -678,7 +717,7 @@ class Drift(arcade.Window):
             width, height = self.get_size()
             self.set_viewport(0, width, 0, height)
 
-        if key == arcade.key.F:
+        if key == arcade.key.F and self.speed < 5 and (self.state == 0 or self.state == 3):
             if self.ghost.center_x == -1000000:
                 self.ghost.center_x = self.player_sprite.center_x
                 self.ghost.center_y = self.player_sprite.center_y
@@ -686,7 +725,11 @@ class Drift(arcade.Window):
                 self.poscarx = self.player_sprite.center_x
                 self.poscary = self.player_sprite.center_y
                 self.poscarang = self.player_sprite.angle
-                self.player_sprite.texture = self.human
+                self.player_sprite2.center_x = self.player_sprite.center_x
+                self.player_sprite2.center_y = self.player_sprite.center_y
+                self.player_sprite.center_y = -1000000
+                self.player_sprite.center_x = -1000000
+                self.physics_engine = arcade.PhysicsEngineSimple(self.player_sprite2, self.scene["Terrain"])
                 self.state = 3
             else:
                 self.ghost.center_x = -1000000
@@ -695,7 +738,9 @@ class Drift(arcade.Window):
                 self.player_sprite.center_x = self.poscarx
                 self.player_sprite.center_y = self.poscary
                 self.player_sprite.angle = self.poscarang
-                self.player_sprite.texture = self.car
+                self.player_sprite2.center_x = -1000000
+                self.player_sprite2.center_y = -1000000
+                self.physics_engine = arcade.PhysicsEngineSimple(self.player_sprite, self.scene["Terrain"])
                 self.state = 0
             self.player_sprite.change_x = 0
             self.player_sprite.change_y = 0
