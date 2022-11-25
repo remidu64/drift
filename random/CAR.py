@@ -2,6 +2,7 @@ import arcade
 import math
 
 
+
 SPRITE_SCALING = 0.3
 TILE_SCALING = 1
 
@@ -46,7 +47,7 @@ class Drift(arcade.Window):
         """
 
         # Call the parent class initializer
-        super().__init__(width, height, title, fullscreen = True, vsync=True, resizable=True)
+        super().__init__(width, height, title, fullscreen = True, vsync=True, resizable=True, update_rate = 1/60)
 
         width, height = self.get_size()
         self.set_viewport(0, width, 0, height)
@@ -65,6 +66,11 @@ class Drift(arcade.Window):
         self.portx = None
         self.porty = None
         self.angleport = None
+        self.speed = None
+        self.time = None
+        self.poscarx = None
+        self.poscary = None
+
 
         # background
         self.background = None
@@ -108,7 +114,7 @@ class Drift(arcade.Window):
         # use spatial hashing for detection.
         layer_options = {
             "Terrain": {
-                "use_spatial_hash": True,
+                "use_spatial_hash": True
             },
             "Water": {
                 "use_spatial_hash": True
@@ -117,8 +123,14 @@ class Drift(arcade.Window):
               "use_spatial_hash": True
             },
             "Ground": {
-                "use_spatial_hash": True,
+                "use_spatial_hash": True
             },
+            "Boundary": {
+                "use_spatial_hash": True
+            },
+            "Runway": {
+                "use_spatial_hash": True
+            }
 
         }
 
@@ -132,6 +144,8 @@ class Drift(arcade.Window):
         # Set up the player
         self.car = arcade.load_texture("assets/car.png")
         self.boat = arcade.load_texture("assets/boat.png")
+        self.plane = arcade.load_texture("assets/plane.png")
+        self.human = arcade.load_texture("assets/human.png")
         self.player_sprite = arcade.Sprite("assets/car.png", SPRITE_SCALING)
         self.player_sprite.angle = 0
         self.player_sprite.center_x = 100
@@ -142,8 +156,27 @@ class Drift(arcade.Window):
         self.state = 0
         self.portx = 0
         self.porty = 0
+        self.speed = 0
         self.angleport = 0
+        self.time = 0
+        self.poscarx = 0
+        self.poscary = 0
+        self.poscarang = 0
         self.scene.add_sprite("Player", self.player_sprite)
+
+        #ghost player
+        self.ghost = arcade.Sprite("assets/car.png", SPRITE_SCALING)
+        self.ghost.angle = 0
+        self.ghost.center_x = -1000000
+        self.ghost.center_y = -1000000
+        self.scene.add_sprite("Ghost", self.ghost)
+
+        #human player
+        self.player_sprite2 = arcade.Sprite("assets/human.png", SPRITE_SCALING)
+        self.player_sprite2.angle = 0
+        self.player_sprite2.center_x = 1000000
+        self.player_sprite2.center_y = 1000000
+        self.scene.add_sprite("Human", self.player_sprite2)
 
 
         # Set the background color
@@ -181,7 +214,15 @@ class Drift(arcade.Window):
         else:
             gear_text = f'Vitesse: {self.gear}'
 
-        arcade.draw_text(gear_text,10, self.height - 20, GREEN, 18)
+        gear_text = arcade.Text(gear_text, 10, self.height - 20, GREEN,18)
+        gear_text.draw()
+
+        #draw speed
+        speed_text = f"{self.speed} km/h"
+
+        speed_text = arcade.Text(speed_text, 10, self.height - 40, GREEN, 18)
+        speed_text.draw()
+
         """
         #debug
         #draw speed
@@ -226,6 +267,8 @@ class Drift(arcade.Window):
         global TEMP_ACCELERATION
         global TEMP_ACCELERATION_ADD
         global FRICTION
+        self.speed = round(math.sqrt((self.player_sprite.change_x ** 2) + (self.player_sprite.change_y ** 2)) * 7.5)
+
         self.player_anglerad = math.radians(self.player_sprite.angle)
 
         port_hit_list = arcade.check_for_collision_with_list(self.player_sprite, self.scene["Port"])
@@ -238,9 +281,12 @@ class Drift(arcade.Window):
                 self.porty = self.player_sprite.center_y
                 self.player_sprite.change_y = 0
                 self.player_sprite.change_x = 0
-                self.player_sprite.center_x = 4850
-                self.player_sprite.center_y = 1550
+                self.player_sprite.forward(-10)
                 self.state = 1
+                self.player_gearing = 3.5
+                TEMP_ACCELERATION_ADD = 0.05
+                self.gear = 0
+                self.time = 0
             elif self.state == 1:
                 self.physics_engine = arcade.PhysicsEngineSimple(self.player_sprite, walls=self.scene["Terrain"])
                 self.player_sprite.angle = self.angleport
@@ -249,9 +295,44 @@ class Drift(arcade.Window):
                 self.player_sprite.change_y = 0
                 self.player_sprite.change_x = 0
                 self.player_sprite.texture = self.car
-                self.player_sprite.forward(-5)
+                self.player_sprite.forward(-10)
                 self.state = 0
+                self.gear = 0
+                self.time = 0
             port_hit_list = []
+
+        runway_hit_list = arcade.check_for_collision_with_list(self.player_sprite, self.scene["Runway"])
+        if len(runway_hit_list) > 1:
+            if self.state == 2:
+                self.physics_engine = arcade.PhysicsEngineSimple(self.player_sprite, walls=self.scene["Terrain"])
+                self.player_sprite.angle = self.angleport
+                self.player_sprite.center_x = self.portx
+                self.player_sprite.center_y = self.porty
+                self.player_sprite.change_y = 0
+                self.player_sprite.change_x = 0
+                self.player_sprite.texture = self.car
+                self.player_sprite.forward(-10)
+                self.state = 0
+                self.gear = 0
+                self.time = 0
+            elif self.state == 0:
+                self.physics_engine = arcade.PhysicsEngineSimple(self.player_sprite, self.scene['Boundary'])
+                self.player_sprite.texture = self.plane
+                self.angleport = self.player_sprite.angle
+                self.portx = self.player_sprite.center_x
+                self.porty = self.player_sprite.center_y
+                self.player_sprite.change_y = 0
+                self.player_sprite.change_x = 0
+                self.player_sprite.forward(20)
+                self.player_sprite.angle = 90
+                self.state = 2
+                self.gear = 0
+                self.player_gearing = 1
+                TEMP_ACCELERATION_ADD = 0.05
+                self.time = 0
+
+
+
 
 
 
@@ -454,6 +535,127 @@ class Drift(arcade.Window):
             if -MIN_SPEED < self.player_sprite.change_y < 0:
                 self.player_sprite.change_y = 0
 
+        elif self.state == 2:
+            if self.speed == 0:
+                self.time += 1
+            else:
+                self.time = 0
+            if self.time >= 180:
+                self.player_sprite.change_y = 0
+                self.player_sprite.change_x = 0
+                self.player_sprite.center_x = 6000
+                self.player_sprite.center_y = 875
+                self.player_sprite.angle = 90
+                self.state = 2
+                self.gear = 0
+                self.player_gearing = 1
+                self.time = 0
+
+
+            if self.up_pressed and not self.down_pressed:
+                if self.gear == -1:
+                    self.player_sprite.forward(-ACCELERATIONB / (FRICTION + 1))
+
+                    if TEMP_ACCELERATION - 0.1 <= 0:
+                        TEMP_ACCELERATION = 0
+                    else:
+                        TEMP_ACCELERATION -= 0.1
+                else:
+
+                    if TEMP_ACCELERATION + TEMP_ACCELERATION_ADD >= ACCELERATIONF:
+                        TEMP_ACCELERATION = ACCELERATIONF
+                    else:
+                        TEMP_ACCELERATION += TEMP_ACCELERATION_ADD
+
+                if self.player_sprite.change_x + (TEMP_ACCELERATION / self.player_gearing) / (
+                        FRICTION + 1) * -math.sin(self.player_anglerad) > MAX_SPEED:
+                    self.player_sprite.forward(MAX_SPEED)
+                elif self.player_sprite.change_x + (TEMP_ACCELERATION / self.player_gearing) / (
+                        FRICTION + 1) * -math.sin(self.player_anglerad) < -MAX_SPEED:
+                    self.player_sprite.forward(MAX_SPEED)
+                else:
+                    self.player_sprite.forward((TEMP_ACCELERATION / self.player_gearing) / (FRICTION + 1))
+
+            elif self.down_pressed and not self.up_pressed:
+                self.player_sprite.change_x /= 1.05
+                self.player_sprite.change_y /= 1.05
+
+            elif not self.down_pressed and not self.up_pressed:
+                if TEMP_ACCELERATION - 0.1 <= 0:
+                    TEMP_ACCELERATION = 0
+                else:
+                    TEMP_ACCELERATION -= 0.1
+
+            self.player_sprite.change_x /= FRICTION + 1
+            self.player_sprite.change_y /= FRICTION + 1
+
+            if self.left_pressed:
+                self.player_sprite.change_angle += ANGLE_ACCELERATION
+            elif self.right_pressed:
+                self.player_sprite.change_angle -= ANGLE_ACCELERATION
+
+            if self.player_sprite.change_angle > ANGLE_SPEED_MAX:
+                self.player_sprite.change_angle = ANGLE_SPEED_MAX
+            elif self.player_sprite.change_angle < -ANGLE_SPEED_MAX:
+                self.player_sprite.change_angle = -ANGLE_SPEED_MAX
+
+            if not self.left_pressed and not self.right_pressed:
+                self.player_sprite.change_angle /= 5
+
+            if ANGLE_SPEED_MIN > self.player_sprite.change_angle > 0:
+                self.player_sprite.change_angle = 0
+            elif -ANGLE_SPEED_MIN < self.player_sprite.change_angle < 0:
+                self.player_sprite.change_angle = 0
+
+            if self.shift_pressed:
+                FRICTION = DRIFT_FRICTION
+                ACCELERATIONF = 1.5
+            else:
+                FRICTION = NON_DRIFT_FRICTION
+                ACCELERATIONF = 1.5
+
+            if MIN_SPEED > self.player_sprite.change_x > 0:
+                self.player_sprite.change_x = 0
+            if MIN_SPEED > self.player_sprite.change_y > 0:
+                self.player_sprite.change_y = 0
+            if -MIN_SPEED < self.player_sprite.change_x < 0:
+                self.player_sprite.change_x = 0
+            if -MIN_SPEED < self.player_sprite.change_y < 0:
+                self.player_sprite.change_y = 0
+
+        elif self.state == 3:
+            if self.up_pressed and not self.down_pressed:
+                self.player_sprite2.forward(0.05)
+            elif not self.up_pressed and self.down_pressed:
+                self.player_sprite2.forward(-0.05)
+
+            self.player_sprite2.change_x /= FRICTION + 1
+            self.player_sprite2.change_y /= FRICTION + 1
+
+            if MIN_SPEED > self.player_sprite2.change_x > 0:
+                self.player_sprite2.change_x = 0
+            if MIN_SPEED > self.player_sprite2.change_y > 0:
+                self.player_sprite2.change_y = 0
+            if -MIN_SPEED < self.player_sprite2.change_x < 0:
+                self.player_sprite2.change_x = 0
+            if -MIN_SPEED < self.player_sprite2.change_y < 0:
+                self.player_sprite2.change_y = 0
+
+            if self.left_pressed and not self.right_pressed:
+                self.player_sprite2.change_angle = 4
+            elif self.right_pressed and not self.left_pressed:
+                self.player_sprite2.change_angle = -4
+
+            if not self.left_pressed and not self.right_pressed:
+                self.player_sprite2.change_angle = 0
+
+            if ANGLE_SPEED_MIN > self.player_sprite2.change_angle > 0:
+                self.player_sprite2.change_angle = 0
+            elif -ANGLE_SPEED_MIN < self.player_sprite2.change_angle < 0:
+                self.player_sprite2.change_angle = 0
+
+
+
 
 
 
@@ -470,8 +672,10 @@ class Drift(arcade.Window):
         Anything between 0 and 1 will have the camera move to the location with a smoother
         pan.
         """
-
-        position = self.player_sprite.center_x - (self.width / 2), self.player_sprite.center_y - (self.height / 2)
+        if not self.state == 3:
+            position = self.player_sprite.center_x - (self.width / 2), self.player_sprite.center_y - (self.height / 2)
+        else:
+            position = self.player_sprite2.center_x - (self.width / 2), self.player_sprite2.center_y - (self.height / 2)
         self.camera.move_to(position, CAMERA_SPEED)
 
     def on_key_press(self, key, modifiers):
@@ -505,7 +709,7 @@ class Drift(arcade.Window):
             else:
                 self.gear -= 1
 
-        if key == arcade.key.F:
+        if key == arcade.key.T:
             # User hits f. Flip between full and not full screen.
             self.set_fullscreen(not self.fullscreen)
 
@@ -513,6 +717,36 @@ class Drift(arcade.Window):
             # so there is a one-to-one mapping.
             width, height = self.get_size()
             self.set_viewport(0, width, 0, height)
+
+        if key == arcade.key.F and self.speed < 5 and (self.state == 0 or self.state == 3):
+            if self.ghost.center_x == -1000000:
+                self.ghost.center_x = self.player_sprite.center_x
+                self.ghost.center_y = self.player_sprite.center_y
+                self.ghost.angle = self.player_sprite.angle
+                self.poscarx = self.player_sprite.center_x
+                self.poscary = self.player_sprite.center_y
+                self.poscarang = self.player_sprite.angle
+                self.player_sprite2.center_x = self.player_sprite.center_x
+                self.player_sprite2.center_y = self.player_sprite.center_y
+                self.player_sprite.center_y = -1000000
+                self.player_sprite.center_x = -1000000
+                self.physics_engine = arcade.PhysicsEngineSimple(self.player_sprite2, self.scene["Terrain"])
+                self.state = 3
+            else:
+                self.ghost.center_x = -1000000
+                self.ghost.center_y = -1000000
+                self.ghost.angle = 0
+                self.player_sprite.center_x = self.poscarx
+                self.player_sprite.center_y = self.poscary
+                self.player_sprite.angle = self.poscarang
+                self.player_sprite2.center_x = -1000000
+                self.player_sprite2.center_y = -1000000
+                self.physics_engine = arcade.PhysicsEngineSimple(self.player_sprite, self.scene["Terrain"])
+                self.state = 0
+            self.player_sprite.change_x = 0
+            self.player_sprite.change_y = 0
+            self.gear = 0
+
 
 
 
